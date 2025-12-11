@@ -6,7 +6,7 @@
   "main": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "bin": {
-    "drift-mcp": "./dist/index.mjs"
+    "drift-mcp": "dist/index.mjs"
   },
   "scripts": {
     "build": "tsdown",
@@ -43,4 +43,3 @@
     "dist"
   ]
 }
-
