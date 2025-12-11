@@ -1,0 +1,46 @@
+{
+  "name": "@use-tusk/drift-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for querying Tusk Drift API traffic data",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "drift-mcp": "./dist/index.mjs"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "tusk",
+    "drift",
+    "api-traffic",
+    "observability"
+  ],
+  "author": "Tusk",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.24.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsdown": "^0.17.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "dist"
+  ]
+}
+
