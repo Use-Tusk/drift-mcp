@@ -1,10 +1,6 @@
 import type {
   TuskDriftConfig,
-  SpanRecording,
-  TraceSpan,
   SchemaResult,
-  DistinctValue,
-  AggregationRow,
   QuerySpansInput,
   GetSchemaInput,
   ListDistinctValuesInput,
@@ -13,12 +9,21 @@ import type {
   GetSpansByIdsInput,
 } from "./types.js";
 import type { ServiceDiscoveryContext } from "./serviceDiscovery.js";
+import type {
+  DriftDataProvider,
+  QuerySpansResult,
+  ListDistinctValuesResult,
+  AggregateSpansResult,
+  GetTraceResult,
+  GetSpansByIdsResult,
+} from "./provider.js";
 
 /**
  * HTTP client for communicating with the Tusk Drift API.
+ * Implements DriftDataProvider for use with the MCP server.
  * Supports multi-service queries via ServiceDiscoveryContext.
  */
-export class TuskDriftApiClient {
+export class TuskDriftApiClient implements DriftDataProvider {
   private readonly baseUrl: string;
   private readonly apiToken: string;
   private serviceContext?: ServiceDiscoveryContext;
@@ -75,11 +80,7 @@ export class TuskDriftApiClient {
   /**
    * Query span recordings with filters
    */
-  async querySpans(input: QuerySpansInput): Promise<{
-    spans: SpanRecording[];
-    total: number;
-    hasMore: boolean;
-  }> {
+  async querySpans(input: QuerySpansInput): Promise<QuerySpansResult> {
     const { observableServiceId, ...rest } = input;
     return this.request("/spans", {
       observableServiceId: this.resolveServiceId(observableServiceId),
@@ -101,9 +102,7 @@ export class TuskDriftApiClient {
   /**
    * Get span recordings by IDs
    */
-  async getSpansByIds(input: GetSpansByIdsInput): Promise<{
-    spans: SpanRecording[];
-  }> {
+  async getSpansByIds(input: GetSpansByIdsInput): Promise<GetSpansByIdsResult> {
     const { observableServiceId, ...rest } = input;
     return this.request("/spans-by-id", {
       observableServiceId: this.resolveServiceId(observableServiceId),
@@ -114,38 +113,34 @@ export class TuskDriftApiClient {
   /**
    * List distinct values for a field
    */
-  async listDistinctValues(input: ListDistinctValuesInput): Promise<{
-    values: DistinctValue[];
-    field: string;
-  }> {
+  async listDistinctValues(input: ListDistinctValuesInput): Promise<ListDistinctValuesResult> {
     const { observableServiceId, ...rest } = input;
-    return this.request("/distinct", {
+    const result = await this.request<{ values: ListDistinctValuesResult["values"] }>("/distinct", {
       observableServiceId: this.resolveServiceId(observableServiceId),
       ...rest,
     });
+    return {
+      values: result.values,
+      field: input.field,
+    };
   }
 
   /**
    * Aggregate spans with grouping and metrics
    */
-  async aggregateSpans(input: AggregateSpansInput): Promise<{
-    results: AggregationRow[];
-    query: unknown;
-  }> {
+  async aggregateSpans(input: AggregateSpansInput): Promise<AggregateSpansResult> {
     const { observableServiceId, ...rest } = input;
-    return this.request("/aggregate", {
+    const result = await this.request<{ results: AggregateSpansResult["results"] }>("/aggregate", {
       observableServiceId: this.resolveServiceId(observableServiceId),
       ...rest,
     });
+    return { results: result.results };
   }
 
   /**
    * Get all spans in a trace as a tree
    */
-  async getTrace(input: GetTraceInput): Promise<{
-    traceTree: TraceSpan | null;
-    spanCount: number;
-  }> {
+  async getTrace(input: GetTraceInput): Promise<GetTraceResult> {
     const { observableServiceId, ...rest } = input;
     return this.request("/trace", {
       observableServiceId: this.resolveServiceId(observableServiceId),

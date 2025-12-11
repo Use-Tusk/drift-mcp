@@ -1,29 +1,39 @@
 #!/usr/bin/env node
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { TuskDriftApiClient } from "./apiClient.js";
-import { tools, toolHandlers } from "./tools/index.js";
 import { ServiceDiscoveryContext } from "./serviceDiscovery.js";
+import { createMcpServer, DEFAULT_INSTRUCTIONS, PACKAGE_NAME, PACKAGE_VERSION } from "./server.js";
 import type { TuskDriftConfig } from "./types.js";
-import {
-  querySpansInputSchema,
-  getSchemaInputSchema,
-  listDistinctValuesInputSchema,
-  aggregateSpansInputSchema,
-  getTraceInputSchema,
-  getSpansByIdsInputSchema,
-} from "./types.js";
 
-// Map tool names to their Zod schemas for proper validation
-const toolInputSchemas: Record<string, unknown> = {
-  query_spans: querySpansInputSchema,
-  get_schema: getSchemaInputSchema,
-  list_distinct_values: listDistinctValuesInputSchema,
-  aggregate_spans: aggregateSpansInputSchema,
-  get_trace: getTraceInputSchema,
-  get_spans_by_ids: getSpansByIdsInputSchema,
-};
+// Re-export for library usage
+export { createMcpServer, DEFAULT_INSTRUCTIONS, PACKAGE_NAME, PACKAGE_VERSION } from "./server.js";
+export { TuskDriftApiClient } from "./apiClient.js";
+export { ServiceDiscoveryContext } from "./serviceDiscovery.js";
+export type {
+  DriftDataProvider,
+  DriftAccessControl,
+  CreateMcpServerOptions,
+  QuerySpansResult,
+  ListDistinctValuesResult,
+  AggregateSpansResult,
+  GetTraceResult,
+  GetSpansByIdsResult,
+} from "./provider.js";
+export type {
+  TuskDriftConfig,
+  SpanRecording,
+  TraceSpan,
+  SchemaResult,
+  DistinctValue,
+  AggregationRow,
+  QuerySpansInput,
+  GetSchemaInput,
+  ListDistinctValuesInput,
+  AggregateSpansInput,
+  GetTraceInput,
+  GetSpansByIdsInput,
+} from "./types.js";
 
 const DEFAULT_API_URL = "https://api.usetusk.ai";
 
@@ -53,30 +63,8 @@ function getConfig(): TuskDriftConfig {
  * Generate instructions that include discovered services.
  */
 function generateInstructions(serviceContext: ServiceDiscoveryContext): string {
-  const baseInstructions = `Search and analyze API traffic span recordings from Tusk Drift.
-
-This MCP server helps you query, analyze, and debug API traffic including:
-- HTTP requests/responses, database queries, gRPC calls, and more
-- Latency metrics and error rates
-- Distributed traces across services
-
-Workflow tips:
-- Start with list_distinct_values to discover available endpoints
-- Use query_spans to find specific API calls
-- Use get_trace to debug a request's full call chain
-
-Root cause analysis workflow:
-If the user is investigating performance issues or errors, you can consider the following workflow:
-1. Use query_spans or aggregate_spans to identify the problematic endpoint/span
-2. Use get_trace to see the full call chain and identify which child span is the bottleneck
-3. Look at the span's metadata (inputValue/outputValue) to understand the request context
-4. Navigate to the relevant source code using the span name (usually maps to route handlers or functions)
-5. Analyze the code path to understand the root cause (if you have access to the service's source code)
-`;
-
   const servicesDescription = serviceContext.getServicesDescription();
-
-  return `${baseInstructions}\n\n${servicesDescription}`;
+  return `${DEFAULT_INSTRUCTIONS}\n\n${servicesDescription}`;
 }
 
 async function main() {
@@ -94,27 +82,22 @@ async function main() {
     : [process.cwd()];
 
   serviceContext.discoverFromRoots(workspaceRoots);
-
   client.setServiceContext(serviceContext);
 
-  // Ensure we have at least one service available
   if (!serviceContext.hasServices()) {
     console.error(
       "Warning: No Tusk services found. Set TUSK_DRIFT_SERVICE_ID or ensure .tusk/config.yaml exists in workspace."
     );
   }
 
-  const server = new McpServer(
-    {
-      name: "tusk-drift-mcp",
-      version: "0.1.0",
-    },
-    {
-      instructions: generateInstructions(serviceContext),
-    }
-  );
+  const server = createMcpServer({
+    provider: client,
+    instructions: generateInstructions(serviceContext),
+    name: PACKAGE_NAME,
+    version: PACKAGE_VERSION,
+  });
 
-  // Resource for service discovery
+  // Register resource for service discovery
   server.registerResource(
     "services",
     "tusk://services",
@@ -147,47 +130,6 @@ async function main() {
     }
   );
 
-  // Register each tool with its handler
-  for (const tool of tools) {
-    const handler = toolHandlers[tool.name];
-    if (!handler) {
-      console.error(`Warning: No handler found for tool ${tool.name}`);
-      continue;
-    }
-
-    const zodSchema = toolInputSchemas[tool.name];
-    if (!zodSchema) {
-      console.error(`Warning: No Zod schema found for tool ${tool.name}`);
-      continue;
-    }
-
-    server.registerTool(
-      tool.name,
-      {
-        description: tool.description,
-        inputSchema: zodSchema as any,
-      },
-      async (args: Record<string, unknown>) => {
-        try {
-          const result = await handler(client, args);
-          return result;
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Error executing ${tool.name}: ${errorMessage}`,
-              },
-            ],
-            isError: true,
-          };
-        }
-      }
-    );
-  }
-
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
@@ -197,8 +139,9 @@ async function main() {
   console.error(serviceContext.getServicesDescription());
 }
 
-main().catch((error) => {
-  console.error("Fatal error:", error);
-  process.exit(1);
-});
-
+if (require.main === module) {
+  main().catch((error) => {
+    console.error("Fatal error:", error);
+    process.exit(1);
+  });
+}
