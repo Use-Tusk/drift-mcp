@@ -22,7 +22,7 @@ Add to your Cursor MCP settings (`~/.cursor/mcp.json` or workspace `.cursor/mcp.
     "tusk-drift": {
       "url": "https://api.usetusk.ai/api/drift-mcp",
       "headers": {
-        "Authorization": "Bearer YOUR_TUSK_API_KEY"
+        "x-api-key": "YOUR_TUSK_API_KEY"
       }
     }
   }
@@ -38,7 +38,7 @@ Add to your Cursor MCP settings (`~/.cursor/mcp.json` or workspace `.cursor/mcp.
       "command": "npx",
       "args": ["-y", "mcp-remote", "https://api.usetusk.ai/api/drift-mcp"],
       "env": {
-        "MCP_HEADERS": "{\"Authorization\": \"Bearer YOUR_TUSK_API_KEY\"}"
+        "MCP_HEADERS": "{\"x-api-key\": \"YOUR_TUSK_API_KEY\"}"
       }
     }
   }

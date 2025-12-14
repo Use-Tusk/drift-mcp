@@ -7,7 +7,7 @@ import { z } from "zod";
 export interface TuskDriftConfig {
   /** Base URL for the Tusk Drift API (e.g., https://api.usetusk.ai) */
   apiBaseUrl: string;
-  /** API key or JWT token for authentication */
+  /** API key for authentication (sent via x-api-key header) */
   apiToken: string;
   /** Optional default observable service ID (can be overridden per request) */
   observableServiceId?: string;
