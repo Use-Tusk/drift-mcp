@@ -64,7 +64,7 @@ export class TuskDriftApiClient implements DriftDataProvider {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiToken}`,
+        "x-api-key": this.apiToken,
       },
       body: JSON.stringify(body),
     });
