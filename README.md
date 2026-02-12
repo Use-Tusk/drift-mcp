@@ -29,6 +29,29 @@ Add to your Cursor MCP settings (`~/.cursor/mcp.json` or workspace `.cursor/mcp.
 }
 ```
 
+**For Claude Code:**
+
+Option A — CLI command:
+```bash
+claude mcp add --transport http tusk-drift https://api.usetusk.ai/api/drift-mcp \
+  --header "x-api-key: YOUR_TUSK_API_KEY"
+```
+
+Option B — Add to `.mcp.json` in your project root:
+```json
+{
+  "mcpServers": {
+    "tusk-drift": {
+      "type": "http",
+      "url": "https://api.usetusk.ai/api/drift-mcp",
+      "headers": {
+        "x-api-key": "YOUR_TUSK_API_KEY"
+      }
+    }
+  }
+}
+```
+
 **For Claude Desktop:**
 
 ```json
