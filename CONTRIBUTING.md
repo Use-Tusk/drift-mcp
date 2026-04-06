@@ -18,6 +18,18 @@ npm run typecheck
 npm run lint
 ```
 
+## Releasing
+
+```bash
+sh ./scripts/release.sh patch
+```
+
+Supported bump types are `patch` (default), `minor`, and `major`.
+
+The script runs preflight checks, bumps `package.json` + `package-lock.json`, rebuilds the package so the embedded version matches, pushes the tag, and creates a GitHub release. That GitHub release triggers the npm publish workflow in `.github/workflows/publish.yml`.
+
+If `gh` is unavailable, the script will still push the tag and tell you to create the GitHub release manually.
+
 ## Running the MCP locally
 
 The MCP server is a stdio server. `stdout` is reserved for MCP JSON-RPC traffic, so avoid wrapping the command in other commands that print to `stdout`.
