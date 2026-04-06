@@ -40,12 +40,12 @@
     }
   },
   "bin": {
-    "drift-mcp": "dist/index.mjs"
+    "drift-mcp": "dist/index.cjs"
   },
   "scripts": {
     "build": "tsdown",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
+    "start": "node dist/index.cjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
     "clean": "rm -rf dist"
@@ -62,6 +62,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",
+    "@use-tusk/drift-schemas": "^0.1.33",
     "zod": "^3.23.8"
   },
   "peerDependencies": {

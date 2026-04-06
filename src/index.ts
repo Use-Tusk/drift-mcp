@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { TuskDriftApiClient } from "./apiClient.js";
 import { ServiceDiscoveryContext } from "./serviceDiscovery.js";
@@ -67,7 +70,24 @@ function generateInstructions(serviceContext: ServiceDiscoveryContext): string {
   return `${DEFAULT_INSTRUCTIONS}\n\n${servicesDescription}`;
 }
 
-async function main() {
+function normalizePath(filePath: string): string {
+  try {
+    return realpathSync(filePath);
+  } catch {
+    return resolve(filePath);
+  }
+}
+
+function isExecutedDirectly(): boolean {
+  const entryPoint = process.argv[1];
+  if (!entryPoint) {
+    return false;
+  }
+
+  return normalizePath(fileURLToPath(import.meta.url)) === normalizePath(entryPoint);
+}
+
+export async function main() {
   const config = getConfig();
   const client = new TuskDriftApiClient(config);
 
@@ -139,7 +159,7 @@ async function main() {
   console.error(serviceContext.getServicesDescription());
 }
 
-if (require.main === module) {
+if (isExecutedDirectly()) {
   main().catch((error) => {
     console.error("Fatal error:", error);
     process.exit(1);

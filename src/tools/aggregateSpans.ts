@@ -1,6 +1,12 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { TuskDriftApiClient } from "../apiClient.js";
-import { aggregateSpansInputSchema, type AggregateSpansInput } from "../types.js";
+import { parseAggregateSpansInput } from "../types.js";
+import {
+  aggregateGroupFieldCodec,
+  aggregateMetricCodec,
+  sortDirectionCodec,
+  timeBucketCodec,
+} from "@use-tusk/drift-schemas/query/span_query_helpers";
 
 export const aggregateSpansTool: Tool = {
   name: "aggregate_spans",
@@ -32,7 +38,7 @@ Examples:
         description: "Fields to group by",
         items: {
           type: "string",
-          enum: ["name", "packageName", "instrumentationName", "environment", "statusCode"],
+          enum: [...aggregateGroupFieldCodec.names],
         },
       },
       metrics: {
@@ -40,30 +46,23 @@ Examples:
         description: "Metrics to calculate",
         items: {
           type: "string",
-          enum: [
-            "count",
-            "errorCount",
-            "errorRate",
-            "avgDuration",
-            "minDuration",
-            "maxDuration",
-            "p50Duration",
-            "p95Duration",
-            "p99Duration",
-          ],
+          enum: [...aggregateMetricCodec.names],
         },
       },
       timeBucket: {
         type: "string",
         description: "Time bucket for time-series data",
-        enum: ["hour", "day", "week"],
+        enum: [...timeBucketCodec.names],
       },
       orderBy: {
         type: "object",
         description: "Order results by a metric",
         properties: {
-          metric: { type: "string" },
-          direction: { type: "string", enum: ["ASC", "DESC"] },
+          metric: {
+            type: "string",
+            enum: [...aggregateMetricCodec.names],
+          },
+          direction: { type: "string", enum: [...sortDirectionCodec.names] },
         },
       },
       limit: {
@@ -80,7 +79,7 @@ export async function handleAggregateSpans(
   client: TuskDriftApiClient,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const input = aggregateSpansInputSchema.parse(args) as AggregateSpansInput;
+  const input = parseAggregateSpansInput(args);
   const result = await client.aggregateSpans(input);
 
   const header = `Aggregation Results (${result.results.length} rows):\n`;
