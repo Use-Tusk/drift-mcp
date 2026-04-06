@@ -17,6 +17,23 @@ import type {
   GetTraceResult,
   GetSpansByIdsResult,
 } from "./provider.js";
+import {
+  AggregateSpansRequest,
+  GetSchemaRequest,
+  GetSpansByIdsRequest,
+  GetTraceSpansRequest,
+  ListDistinctValuesRequest,
+  QuerySpansRequest,
+} from "@use-tusk/drift-schemas/query/span_query";
+
+const PROTO_JSON_OPTIONS = { enumAsInteger: true } as const;
+
+type QuerySpansApiResponse = {
+  spans: QuerySpansResult["spans"];
+  hasMore: boolean;
+  total?: number;
+  totalCount?: number;
+};
 
 /**
  * HTTP client for communicating with the Tusk Drift API.
@@ -81,44 +98,75 @@ export class TuskDriftApiClient implements DriftDataProvider {
    * Query span recordings with filters
    */
   async querySpans(input: QuerySpansInput): Promise<QuerySpansResult> {
-    const { observableServiceId, ...rest } = input;
-    return this.request("/spans", {
-      observableServiceId: this.resolveServiceId(observableServiceId),
-      ...rest,
-    });
+    const result = await this.request<QuerySpansApiResponse>(
+      "/spans",
+      QuerySpansRequest.toJson(
+        QuerySpansRequest.create({
+          ...input,
+          observableServiceId: this.resolveServiceId(input.observableServiceId || undefined),
+        }),
+        PROTO_JSON_OPTIONS
+      )
+    );
+
+    const total = result.total ?? result.totalCount;
+    if (total === undefined) {
+      throw new Error("API response for /api/drift/query/spans is missing total/totalCount");
+    }
+
+    return {
+      spans: result.spans,
+      total,
+      hasMore: result.hasMore,
+    };
   }
 
   /**
    * Get schema information for a specific instrumentation
    */
   async getSchema(input: GetSchemaInput): Promise<SchemaResult> {
-    const { observableServiceId, ...rest } = input;
-    return this.request("/schema", {
-      observableServiceId: this.resolveServiceId(observableServiceId),
-      ...rest,
-    });
+    return this.request(
+      "/schema",
+      GetSchemaRequest.toJson(
+        GetSchemaRequest.create({
+          ...input,
+          observableServiceId: this.resolveServiceId(input.observableServiceId || undefined),
+        }),
+        PROTO_JSON_OPTIONS
+      )
+    );
   }
 
   /**
    * Get span recordings by IDs
    */
   async getSpansByIds(input: GetSpansByIdsInput): Promise<GetSpansByIdsResult> {
-    const { observableServiceId, ...rest } = input;
-    return this.request("/spans-by-id", {
-      observableServiceId: this.resolveServiceId(observableServiceId),
-      ...rest,
-    });
+    return this.request(
+      "/spans-by-id",
+      GetSpansByIdsRequest.toJson(
+        GetSpansByIdsRequest.create({
+          ...input,
+          observableServiceId: this.resolveServiceId(input.observableServiceId || undefined),
+        }),
+        PROTO_JSON_OPTIONS
+      )
+    );
   }
 
   /**
    * List distinct values for a field
    */
   async listDistinctValues(input: ListDistinctValuesInput): Promise<ListDistinctValuesResult> {
-    const { observableServiceId, ...rest } = input;
-    const result = await this.request<{ values: ListDistinctValuesResult["values"] }>("/distinct", {
-      observableServiceId: this.resolveServiceId(observableServiceId),
-      ...rest,
-    });
+    const result = await this.request<{ values: ListDistinctValuesResult["values"] }>(
+      "/distinct",
+      ListDistinctValuesRequest.toJson(
+        ListDistinctValuesRequest.create({
+          ...input,
+          observableServiceId: this.resolveServiceId(input.observableServiceId || undefined),
+        }),
+        PROTO_JSON_OPTIONS
+      )
+    );
     return {
       values: result.values,
       field: input.field,
@@ -129,11 +177,16 @@ export class TuskDriftApiClient implements DriftDataProvider {
    * Aggregate spans with grouping and metrics
    */
   async aggregateSpans(input: AggregateSpansInput): Promise<AggregateSpansResult> {
-    const { observableServiceId, ...rest } = input;
-    const result = await this.request<{ results: AggregateSpansResult["results"] }>("/aggregate", {
-      observableServiceId: this.resolveServiceId(observableServiceId),
-      ...rest,
-    });
+    const result = await this.request<{ results: AggregateSpansResult["results"] }>(
+      "/aggregate",
+      AggregateSpansRequest.toJson(
+        AggregateSpansRequest.create({
+          ...input,
+          observableServiceId: this.resolveServiceId(input.observableServiceId || undefined),
+        }),
+        PROTO_JSON_OPTIONS
+      )
+    );
     return { results: result.results };
   }
 
@@ -141,11 +194,16 @@ export class TuskDriftApiClient implements DriftDataProvider {
    * Get all spans in a trace as a tree
    */
   async getTrace(input: GetTraceInput): Promise<GetTraceResult> {
-    const { observableServiceId, ...rest } = input;
-    return this.request("/trace", {
-      observableServiceId: this.resolveServiceId(observableServiceId),
-      ...rest,
-    });
+    return this.request(
+      "/trace",
+      GetTraceSpansRequest.toJson(
+        GetTraceSpansRequest.create({
+          ...input,
+          observableServiceId: this.resolveServiceId(input.observableServiceId || undefined),
+        }),
+        PROTO_JSON_OPTIONS
+      )
+    );
   }
 }
 

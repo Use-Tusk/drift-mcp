@@ -1,7 +1,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { TuskDriftApiClient } from "../apiClient.js";
 import type { TraceSpan } from "../types.js";
-import { getTraceInputSchema, type GetTraceInput } from "../types.js";
+import { parseGetTraceInput } from "../types.js";
 
 export const getTraceTool: Tool = {
   name: "get_trace",
@@ -70,7 +70,7 @@ export async function handleGetTrace(
   client: TuskDriftApiClient,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const input = getTraceInputSchema.parse(args) as GetTraceInput;
+  const input = parseGetTraceInput(args);
   const result = await client.getTrace(input);
 
   if (!result.traceTree) {

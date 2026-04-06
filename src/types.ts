@@ -1,4 +1,31 @@
 import { z } from "zod";
+import { Timestamp } from "@use-tusk/drift-schemas/google/protobuf/timestamp";
+import { Value } from "@use-tusk/drift-schemas/google/protobuf/struct";
+import {
+  AggregateSpansRequest as SharedAggregateSpansRequest,
+  CastType,
+  DecodeStrategy,
+  GetSchemaRequest as SharedGetSchemaRequest,
+  GetSpansByIdsRequest as SharedGetSpansByIdsRequest,
+  GetTraceSpansRequest as SharedGetTraceSpansRequest,
+  ListDistinctValuesRequest as SharedListDistinctValuesRequest,
+  QuerySpansRequest as SharedQuerySpansRequest,
+  TimeBucket,
+  type FieldAccess as SharedFieldAccess,
+  type FieldPredicate as SharedFieldPredicate,
+  type WhereClause as SharedWhereClause,
+} from "@use-tusk/drift-schemas/query/span_query";
+import {
+  aggregateGroupFieldCodec,
+  aggregateMetricCodec,
+  castTypeCodec,
+  decodeStrategyCodec,
+  selectableSpanFieldCodec,
+  sortDirectionCodec,
+  spanSortFieldCodec,
+  timeBucketCodec,
+  type EnumCodec,
+} from "@use-tusk/drift-schemas/query/span_query_helpers";
 
 // ============================================
 // Configuration
@@ -13,92 +40,111 @@ export interface TuskDriftConfig {
   observableServiceId?: string;
 }
 
-// ============================================
-// Shared Filter Schemas
-// ============================================
+type QueryValue = string | number | boolean | null;
 
-export const stringFilterSchema = z.object({
-  eq: z.string().optional(),
-  neq: z.string().optional(),
-  in: z.array(z.string()).optional(),
-  contains: z.string().optional(),
-  startsWith: z.string().optional(),
-  endsWith: z.string().optional(),
-});
+function enumNameSchema<TName extends string, TValue extends number>(codec: EnumCodec<TName, TValue>) {
+  return z.custom<TName>((value): value is TName => codec.isName(value), {
+    message: `Expected one of: ${codec.names.join(", ")}`,
+  });
+}
 
-export const numberFilterSchema = z.object({
-  eq: z.number().optional(),
-  neq: z.number().optional(),
-  gt: z.number().optional(),
-  gte: z.number().optional(),
-  lt: z.number().optional(),
-  lte: z.number().optional(),
-});
+const queryValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
-export const booleanFilterSchema = z.object({
-  eq: z.boolean(),
-});
+const timestampRangeSchema = z
+  .object({
+    start: z.coerce.date(),
+    end: z.coerce.date(),
+  })
+  .strict();
 
-// ============================================
-// JSONB Filter Schema
-// ============================================
+export const fieldAccessSchema = z
+  .object({
+    castAs: enumNameSchema(castTypeCodec).optional(),
+    decode: enumNameSchema(decodeStrategyCodec).optional(),
+    thenPath: z.string().regex(/^\$/, "JSONPath must start with $").optional(),
+  })
+  .strict();
 
-export const jsonbFilterSchema = z.object({
-  column: z.enum(["inputValue", "outputValue", "metadata", "status"]),
-  jsonPath: z.string().regex(/^\$/, "JSONPath must start with $"),
-  eq: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
-  neq: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
-  gt: z.number().optional(),
-  gte: z.number().optional(),
-  lt: z.number().optional(),
-  lte: z.number().optional(),
-  contains: z.string().optional(),
-  startsWith: z.string().optional(),
-  endsWith: z.string().optional(),
-  isNull: z.boolean().optional(),
-  in: z.array(z.union([z.string(), z.number()])).optional(),
-  castAs: z.enum(["text", "int", "float", "boolean"]).optional(),
-  decodeBase64: z.boolean().optional(),
-  thenPath: z.string().regex(/^\$/, "JSONPath must start with $").optional(),
-});
+type FieldAccessInput = z.infer<typeof fieldAccessSchema>;
 
-export type JsonbFilter = z.infer<typeof jsonbFilterSchema>;
+export const fieldPredicateSchema = z
+  .object({
+    eq: queryValueSchema.optional(),
+    neq: queryValueSchema.optional(),
+    inValues: z.array(queryValueSchema).optional(),
+    notInValues: z.array(queryValueSchema).optional(),
+    gt: queryValueSchema.optional(),
+    gte: queryValueSchema.optional(),
+    lt: queryValueSchema.optional(),
+    lte: queryValueSchema.optional(),
+    contains: z.string().optional(),
+    startsWith: z.string().optional(),
+    endsWith: z.string().optional(),
+    isNull: z.boolean().optional(),
+    betweenTimestamps: timestampRangeSchema.optional(),
+    access: fieldAccessSchema.optional(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.eq !== undefined ||
+      value.neq !== undefined ||
+      value.inValues !== undefined ||
+      value.notInValues !== undefined ||
+      value.gt !== undefined ||
+      value.gte !== undefined ||
+      value.lt !== undefined ||
+      value.lte !== undefined ||
+      value.contains !== undefined ||
+      value.startsWith !== undefined ||
+      value.endsWith !== undefined ||
+      value.isNull !== undefined ||
+      value.betweenTimestamps !== undefined,
+    {
+      message: "At least one predicate operator is required",
+    }
+  );
 
-// ============================================
-// Span Where Clause
-// ============================================
+type FieldPredicateInput = z.infer<typeof fieldPredicateSchema>;
 
-export const spanWhereClauseSchema: z.ZodType<SpanWhereClause> = z.lazy(() =>
+type SpanWhereClauseArgs = {
+  fields: Record<string, FieldPredicateInput>;
+  and: SpanWhereClauseArgs[];
+  or: SpanWhereClauseArgs[];
+  not?: SpanWhereClauseArgs;
+};
+
+type SpanWhereClauseRawInput = {
+  fields?: Record<string, FieldPredicateInput>;
+  and?: SpanWhereClauseRawInput[];
+  or?: SpanWhereClauseRawInput[];
+  not?: SpanWhereClauseRawInput;
+};
+
+export const spanWhereClauseSchema: z.ZodType<
+  SpanWhereClauseArgs,
+  z.ZodTypeDef,
+  SpanWhereClauseRawInput
+> = z.lazy(() =>
   z
     .object({
-      // Field filters
-      name: stringFilterSchema.optional(),
-      packageName: stringFilterSchema.optional(),
-      instrumentationName: stringFilterSchema.optional(),
-      environment: stringFilterSchema.optional(),
-      traceId: stringFilterSchema.optional(),
-      spanId: stringFilterSchema.optional(),
-      duration: numberFilterSchema.optional(),
-      isRootSpan: booleanFilterSchema.optional(),
-      // Logical operators
-      AND: z.array(spanWhereClauseSchema).optional(),
-      OR: z.array(spanWhereClauseSchema).optional(),
+      fields: z.record(z.string(), fieldPredicateSchema).default({}),
+      and: z.array(spanWhereClauseSchema).default([]),
+      or: z.array(spanWhereClauseSchema).default([]),
+      not: spanWhereClauseSchema.optional(),
     })
-    .partial()
+    .strict()
+    .refine(
+      (value) =>
+        Object.keys(value.fields).length > 0 ||
+        value.and.length > 0 ||
+        value.or.length > 0 ||
+        value.not !== undefined,
+      {
+        message: "Where clause cannot be empty",
+      }
+    )
 );
-
-export interface SpanWhereClause {
-  name?: z.infer<typeof stringFilterSchema>;
-  packageName?: z.infer<typeof stringFilterSchema>;
-  instrumentationName?: z.infer<typeof stringFilterSchema>;
-  environment?: z.infer<typeof stringFilterSchema>;
-  traceId?: z.infer<typeof stringFilterSchema>;
-  spanId?: z.infer<typeof stringFilterSchema>;
-  duration?: z.infer<typeof numberFilterSchema>;
-  isRootSpan?: z.infer<typeof booleanFilterSchema>;
-  AND?: SpanWhereClause[];
-  OR?: SpanWhereClause[];
-}
 
 // ============================================
 // API Response Types
@@ -166,20 +212,19 @@ export interface AggregationRow {
 
 export const querySpansInputSchema = z.object({
   observableServiceId: z.string().optional().describe("Service ID to query (required if multiple services available)"),
-  where: spanWhereClauseSchema.optional().describe("Filter conditions for spans"),
-  jsonbFilters: z.array(jsonbFilterSchema).optional().describe("JSONB path filters for inputValue/outputValue"),
+  where: spanWhereClauseSchema.optional().describe("Recursive span filter clause"),
   orderBy: z
     .array(
       z.object({
-        field: z.enum(["timestamp", "duration", "name"]),
-        direction: z.enum(["ASC", "DESC"]),
+        field: enumNameSchema(spanSortFieldCodec),
+        direction: enumNameSchema(sortDirectionCodec),
       })
     )
     .optional()
     .describe("Ordering"),
   limit: z.number().min(1).max(100).default(20).describe("Max results to return"),
   offset: z.number().min(0).default(0).describe("Pagination offset"),
-  includeInputOutput: z.boolean().default(false).describe("Include full inputValue/outputValue (verbose)"),
+  includePayloads: z.boolean().default(false).describe("Include full inputValue/outputValue (verbose)"),
   maxPayloadLength: z.number().min(0).default(500).describe("Truncate payload strings to this length"),
 });
 
@@ -196,7 +241,6 @@ export const listDistinctValuesInputSchema = z.object({
   observableServiceId: z.string().optional().describe("Service ID to query (required if multiple services available)"),
   field: z.string().describe("Field to get distinct values for (e.g., 'name', 'packageName', 'outputValue.statusCode')"),
   where: spanWhereClauseSchema.optional().describe("Filter conditions"),
-  jsonbFilters: z.array(jsonbFilterSchema).optional().describe("JSONB path filters"),
   limit: z.number().min(1).max(100).default(50).describe("Max distinct values to return"),
 });
 
@@ -204,30 +248,18 @@ export const aggregateSpansInputSchema = z.object({
   observableServiceId: z.string().optional().describe("Service ID to query (required if multiple services available)"),
   where: spanWhereClauseSchema.optional().describe("Filter conditions"),
   groupBy: z
-    .array(z.enum(["name", "packageName", "instrumentationName", "environment", "statusCode"]))
+    .array(enumNameSchema(aggregateGroupFieldCodec))
     .optional()
     .describe("Fields to group by"),
   metrics: z
-    .array(
-      z.enum([
-        "count",
-        "errorCount",
-        "errorRate",
-        "avgDuration",
-        "minDuration",
-        "maxDuration",
-        "p50Duration",
-        "p95Duration",
-        "p99Duration",
-      ])
-    )
+    .array(enumNameSchema(aggregateMetricCodec))
     .min(1)
     .describe("Metrics to calculate"),
-  timeBucket: z.enum(["hour", "day", "week"]).optional().describe("Time bucket for time-series data"),
+  timeBucket: enumNameSchema(timeBucketCodec).optional().describe("Time bucket for time-series data"),
   orderBy: z
     .object({
-      metric: z.string(),
-      direction: z.enum(["ASC", "DESC"]),
+      metric: enumNameSchema(aggregateMetricCodec),
+      direction: enumNameSchema(sortDirectionCodec),
     })
     .optional()
     .describe("Order by metric"),
@@ -244,15 +276,150 @@ export const getTraceInputSchema = z.object({
 export const getSpansByIdsInputSchema = z.object({
   observableServiceId: z.string().optional().describe("Service ID to query (required if multiple services available)"),
   ids: z.array(z.string()).min(1).max(20).describe("Span recording IDs to fetch"),
+  fields: z.array(enumNameSchema(selectableSpanFieldCodec)).optional().describe("Specific fields to return"),
   includePayloads: z.boolean().default(true).describe("Include inputValue/outputValue"),
   maxPayloadLength: z.number().min(0).default(500).describe("Truncate payload strings"),
 });
 
-// Type exports
-export type QuerySpansInput = z.infer<typeof querySpansInputSchema>;
-export type GetSchemaInput = z.infer<typeof getSchemaInputSchema>;
-export type ListDistinctValuesInput = z.infer<typeof listDistinctValuesInputSchema>;
-export type AggregateSpansInput = z.infer<typeof aggregateSpansInputSchema>;
-export type GetTraceInput = z.infer<typeof getTraceInputSchema>;
-export type GetSpansByIdsInput = z.infer<typeof getSpansByIdsInputSchema>;
+type QuerySpansArgs = z.infer<typeof querySpansInputSchema>;
+type GetSchemaArgs = z.infer<typeof getSchemaInputSchema>;
+type ListDistinctValuesArgs = z.infer<typeof listDistinctValuesInputSchema>;
+type AggregateSpansArgs = z.infer<typeof aggregateSpansInputSchema>;
+type GetTraceArgs = z.infer<typeof getTraceInputSchema>;
+type GetSpansByIdsArgs = z.infer<typeof getSpansByIdsInputSchema>;
+
+export type QuerySpansInput = SharedQuerySpansRequest;
+export type GetSchemaInput = SharedGetSchemaRequest;
+export type ListDistinctValuesInput = SharedListDistinctValuesRequest;
+export type AggregateSpansInput = SharedAggregateSpansRequest;
+export type GetTraceInput = SharedGetTraceSpansRequest;
+export type GetSpansByIdsInput = SharedGetSpansByIdsRequest;
+
+function toProtoValue(value: QueryValue) {
+  return Value.fromJson(value);
+}
+
+function toProtoFieldAccess(access?: FieldAccessInput): SharedFieldAccess | undefined {
+  if (!access) {
+    return undefined;
+  }
+
+  return {
+    castAs: access.castAs ? castTypeCodec.byName[access.castAs] : CastType.UNSPECIFIED,
+    decode: access.decode ? decodeStrategyCodec.byName[access.decode] : DecodeStrategy.UNSPECIFIED,
+    thenPath: access.thenPath,
+  };
+}
+
+function toProtoFieldPredicate(predicate: FieldPredicateInput): SharedFieldPredicate {
+  return {
+    eq: predicate.eq !== undefined ? toProtoValue(predicate.eq) : undefined,
+    neq: predicate.neq !== undefined ? toProtoValue(predicate.neq) : undefined,
+    inValues: predicate.inValues?.map(toProtoValue) ?? [],
+    notInValues: predicate.notInValues?.map(toProtoValue) ?? [],
+    gt: predicate.gt !== undefined ? toProtoValue(predicate.gt) : undefined,
+    gte: predicate.gte !== undefined ? toProtoValue(predicate.gte) : undefined,
+    lt: predicate.lt !== undefined ? toProtoValue(predicate.lt) : undefined,
+    lte: predicate.lte !== undefined ? toProtoValue(predicate.lte) : undefined,
+    contains: predicate.contains,
+    startsWith: predicate.startsWith,
+    endsWith: predicate.endsWith,
+    isNull: predicate.isNull,
+    betweenTimestamps: predicate.betweenTimestamps
+      ? {
+          start: Timestamp.fromDate(predicate.betweenTimestamps.start),
+          end: Timestamp.fromDate(predicate.betweenTimestamps.end),
+        }
+      : undefined,
+    access: toProtoFieldAccess(predicate.access),
+  };
+}
+
+function toProtoWhereClause(where: SpanWhereClauseArgs): SharedWhereClause {
+  return {
+    fields: Object.fromEntries(
+      Object.entries(where.fields).map(([field, predicate]) => [field, toProtoFieldPredicate(predicate)])
+    ),
+    and: where.and.map(toProtoWhereClause),
+    or: where.or.map(toProtoWhereClause),
+    not: where.not ? toProtoWhereClause(where.not) : undefined,
+  };
+}
+
+export function parseQuerySpansInput(args: Record<string, unknown>): QuerySpansInput {
+  const input: QuerySpansArgs = querySpansInputSchema.parse(args);
+  return SharedQuerySpansRequest.create({
+    observableServiceId: input.observableServiceId ?? "",
+    where: input.where ? toProtoWhereClause(input.where) : undefined,
+    orderBy: (input.orderBy ?? []).map((orderBy) => ({
+      field: spanSortFieldCodec.byName[orderBy.field],
+      direction: sortDirectionCodec.byName[orderBy.direction],
+    })),
+    limit: input.limit,
+    offset: input.offset,
+    includePayloads: input.includePayloads,
+    maxPayloadLength: input.maxPayloadLength,
+  });
+}
+
+export function parseGetSchemaInput(args: Record<string, unknown>): GetSchemaInput {
+  const input: GetSchemaArgs = getSchemaInputSchema.parse(args);
+  return SharedGetSchemaRequest.create({
+    observableServiceId: input.observableServiceId ?? "",
+    packageName: input.packageName,
+    instrumentationName: input.instrumentationName,
+    name: input.name,
+    showExample: input.showExample,
+    maxPayloadLength: input.maxPayloadLength,
+  });
+}
+
+export function parseListDistinctValuesInput(args: Record<string, unknown>): ListDistinctValuesInput {
+  const input: ListDistinctValuesArgs = listDistinctValuesInputSchema.parse(args);
+  return SharedListDistinctValuesRequest.create({
+    observableServiceId: input.observableServiceId ?? "",
+    field: input.field,
+    where: input.where ? toProtoWhereClause(input.where) : undefined,
+    limit: input.limit,
+  });
+}
+
+export function parseAggregateSpansInput(args: Record<string, unknown>): AggregateSpansInput {
+  const input: AggregateSpansArgs = aggregateSpansInputSchema.parse(args);
+  return SharedAggregateSpansRequest.create({
+    observableServiceId: input.observableServiceId ?? "",
+    where: input.where ? toProtoWhereClause(input.where) : undefined,
+    groupBy: (input.groupBy ?? []).map((field) => aggregateGroupFieldCodec.byName[field]),
+    metrics: input.metrics.map((metric) => aggregateMetricCodec.byName[metric]),
+    timeBucket: input.timeBucket ? timeBucketCodec.byName[input.timeBucket] : TimeBucket.UNSPECIFIED,
+    orderBy: input.orderBy
+      ? {
+          metric: aggregateMetricCodec.byName[input.orderBy.metric],
+          direction: sortDirectionCodec.byName[input.orderBy.direction],
+        }
+      : undefined,
+    limit: input.limit,
+  });
+}
+
+export function parseGetTraceInput(args: Record<string, unknown>): GetTraceInput {
+  const input: GetTraceArgs = getTraceInputSchema.parse(args);
+  return SharedGetTraceSpansRequest.create({
+    observableServiceId: input.observableServiceId ?? "",
+    traceId: input.traceId,
+    includePayloads: input.includePayloads,
+    maxPayloadLength: input.maxPayloadLength,
+  });
+}
+
+export function parseGetSpansByIdsInput(args: Record<string, unknown>): GetSpansByIdsInput {
+  const input: GetSpansByIdsArgs = getSpansByIdsInputSchema.parse(args);
+  return SharedGetSpansByIdsRequest.create({
+    observableServiceId: input.observableServiceId ?? "",
+    ids: input.ids,
+    fields: (input.fields ?? []).map((field) => selectableSpanFieldCodec.byName[field]),
+    includePayloads: input.includePayloads,
+    maxPayloadLength: input.maxPayloadLength,
+  });
+}
 

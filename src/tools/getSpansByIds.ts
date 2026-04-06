@@ -1,6 +1,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { TuskDriftApiClient } from "../apiClient.js";
-import { getSpansByIdsInputSchema, type GetSpansByIdsInput } from "../types.js";
+import { parseGetSpansByIdsInput } from "../types.js";
+import { selectableSpanFieldCodec } from "@use-tusk/drift-schemas/query/span_query_helpers";
 
 export const getSpansByIdsTool: Tool = {
   name: "get_spans_by_ids",
@@ -24,6 +25,14 @@ This is useful for:
         items: { type: "string" },
         description: "Span recording IDs to fetch (max 20)",
       },
+      fields: {
+        type: "array",
+        items: {
+          type: "string",
+          enum: [...selectableSpanFieldCodec.names],
+        },
+        description: "Optional list of fields to return",
+      },
       includePayloads: {
         type: "boolean",
         description: "Include full inputValue/outputValue",
@@ -43,7 +52,7 @@ export async function handleGetSpansByIds(
   client: TuskDriftApiClient,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const input = getSpansByIdsInputSchema.parse(args) as GetSpansByIdsInput;
+  const input = parseGetSpansByIdsInput(args);
   const result = await client.getSpansByIds(input);
 
   if (result.spans.length === 0) {

@@ -32,12 +32,14 @@ Add to your Cursor MCP settings (`~/.cursor/mcp.json` or workspace `.cursor/mcp.
 **For Claude Code:**
 
 Option A — CLI command:
+
 ```bash
 claude mcp add --transport http tusk-drift https://api.usetusk.ai/api/drift-mcp \
   --header "x-api-key: YOUR_TUSK_API_KEY"
 ```
 
 Option B — Add to `.mcp.json` in your project root:
+
 ```json
 {
   "mcpServers": {
@@ -72,10 +74,6 @@ Option B — Add to `.mcp.json` in your project root:
 
 Run the MCP server locally. This is useful if you need offline access or custom configuration.
 
-```bash
-npm install -g @use-tusk/drift-mcp
-```
-
 **For Claude Desktop / Cursor:**
 
 Add to your `claude_desktop_config.json` or Cursor MCP settings:
@@ -87,7 +85,7 @@ Add to your `claude_desktop_config.json` or Cursor MCP settings:
       "command": "npx",
       "args": ["-y", "@use-tusk/drift-mcp"],
       "env": {
-        "TUSK_API_KEY": "your-api-token"
+        "TUSK_API_KEY": "YOUR_TUSK_API_KEY"
       }
     }
   }
@@ -99,8 +97,9 @@ Add to your `claude_desktop_config.json` or Cursor MCP settings:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `TUSK_API_KEY` | Yes | Your API token |
-| `TUSK_DRIFT_API_URL` | No | Tusk API URL (defaults to `https://api.usetusk.ai`) |
+| `TUSK_DRIFT_API_URL` | No | Backend base URL (defaults to `https://api.usetusk.ai`). Use origins like `https://api.usetusk.ai` or `http://localhost:8000`, not `/api/drift-mcp`. |
 | `TUSK_DRIFT_SERVICE_ID` | No | Service ID (auto-discovered from `.tusk/config.yaml` if not set) |
+| `TUSK_WORKSPACE_ROOTS` | No | Comma-separated workspace roots to search for `.tusk/config.yaml` files when auto-discovering services |
 
 ## Available Tools
 

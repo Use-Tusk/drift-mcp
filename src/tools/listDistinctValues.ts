@@ -1,6 +1,6 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { TuskDriftApiClient } from "../apiClient.js";
-import { listDistinctValuesInputSchema, type ListDistinctValuesInput } from "../types.js";
+import { parseListDistinctValuesInput } from "../types.js";
 
 export const listDistinctValuesTool: Tool = {
   name: "list_distinct_values",
@@ -27,11 +27,7 @@ This helps you understand what values exist before building specific queries.`,
       },
       where: {
         type: "object",
-        description: "Optional filter to scope the distinct values",
-      },
-      jsonbFilters: {
-        type: "array",
-        description: "Optional JSONB filters to scope the distinct values",
+        description: "Optional recursive filter clause to scope the distinct values",
       },
       limit: {
         type: "number",
@@ -47,7 +43,7 @@ export async function handleListDistinctValues(
   client: TuskDriftApiClient,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const input = listDistinctValuesInputSchema.parse(args) as ListDistinctValuesInput;
+  const input = parseListDistinctValuesInput(args);
   const result = await client.listDistinctValues(input);
 
   const header = `Distinct values for "${result.field}" (${result.values.length} unique values):\n`;

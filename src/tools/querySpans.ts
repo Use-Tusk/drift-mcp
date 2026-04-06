@@ -1,6 +1,10 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { TuskDriftApiClient } from "../apiClient.js";
-import { querySpansInputSchema, type QuerySpansInput } from "../types.js";
+import { parseQuerySpansInput } from "../types.js";
+import {
+  sortDirectionCodec,
+  spanSortFieldCodec,
+} from "@use-tusk/drift-schemas/query/span_query_helpers";
 
 export const querySpansTool: Tool = {
   name: "query_spans",
@@ -13,9 +17,9 @@ Use this tool to:
 - Debug specific API calls
 
 Examples:
-- Find failed requests: where.name = { contains: "/api/users" }, jsonbFilters = [{ column: "outputValue", jsonPath: "$.statusCode", gte: 400, castAs: "int" }]
-- Find slow requests: where.duration = { gt: 1000 }
-- Recent traffic for endpoint: where.name = { eq: "/api/orders" }, limit = 10, orderBy = [{ field: "timestamp", direction: "DESC" }]`,
+- Find failed requests: where = { fields: { "outputValue.statusCode": { gte: 400, access: { castAs: "int" } } } }
+- Find slow requests: where = { fields: { duration: { gt: 1000 } } }
+- Recent traffic for endpoint: where = { fields: { name: { eq: "/api/orders" } } }, limit = 10, orderBy = [{ field: "timestamp", direction: "DESC" }]`,
   inputSchema: {
     type: "object",
     properties: {
@@ -25,99 +29,8 @@ Examples:
       },
       where: {
         type: "object",
-        description: "Filter conditions for spans",
-        properties: {
-          name: {
-            type: "object",
-            description: "Filter by span/endpoint name",
-            properties: {
-              eq: { type: "string" },
-              contains: { type: "string" },
-              startsWith: { type: "string" },
-              in: { type: "array", items: { type: "string" } },
-            },
-          },
-          packageName: {
-            type: "object",
-            description: "Filter by instrumentation package (http, pg, fetch, grpc, etc.)",
-            properties: {
-              eq: { type: "string" },
-              in: { type: "array", items: { type: "string" } },
-            },
-          },
-          instrumentationName: {
-            type: "object",
-            description: "Filter by instrumentation name",
-            properties: { eq: { type: "string" } },
-          },
-          duration: {
-            type: "object",
-            description: "Filter by duration in milliseconds",
-            properties: {
-              gt: { type: "number" },
-              gte: { type: "number" },
-              lt: { type: "number" },
-              lte: { type: "number" },
-            },
-          },
-          traceId: {
-            type: "object",
-            description: "Filter by trace ID",
-            properties: { eq: { type: "string" } },
-          },
-          isRootSpan: {
-            type: "object",
-            description: "Filter by root span status",
-            properties: { eq: { type: "boolean" } },
-          },
-          AND: {
-            type: "array",
-            description: "Combine conditions with AND",
-          },
-          OR: {
-            type: "array",
-            description: "Combine conditions with OR",
-          },
-        },
-      },
-      jsonbFilters: {
-        type: "array",
-        description: "Filters for JSONB columns (inputValue, outputValue, metadata)",
-        items: {
-          type: "object",
-          properties: {
-            column: {
-              type: "string",
-              enum: ["inputValue", "outputValue", "metadata", "status"],
-              description: "JSONB column to filter",
-            },
-            jsonPath: {
-              type: "string",
-              description: "JSONPath expression starting with $ (e.g., $.statusCode, $.body.userId)",
-            },
-            eq: { description: "Equals value" },
-            neq: { description: "Not equals value" },
-            gt: { type: "number", description: "Greater than" },
-            gte: { type: "number", description: "Greater than or equal" },
-            lt: { type: "number", description: "Less than" },
-            lte: { type: "number", description: "Less than or equal" },
-            contains: { type: "string", description: "String contains" },
-            castAs: {
-              type: "string",
-              enum: ["text", "int", "float", "boolean"],
-              description: "Cast JSONB value to type for comparison",
-            },
-            decodeBase64: {
-              type: "boolean",
-              description: "Decode base64 string before applying filter",
-            },
-            thenPath: {
-              type: "string",
-              description: "Additional JSONPath to apply after base64 decoding",
-            },
-          },
-          required: ["column", "jsonPath"],
-        },
+        description:
+          "Recursive filter clause. Use where.fields for field predicates and where.and/or/not for boolean composition.",
       },
       orderBy: {
         type: "array",
@@ -125,8 +38,11 @@ Examples:
         items: {
           type: "object",
           properties: {
-            field: { type: "string", enum: ["timestamp", "duration", "name"] },
-            direction: { type: "string", enum: ["ASC", "DESC"] },
+            field: {
+              type: "string",
+              enum: [...spanSortFieldCodec.names],
+            },
+            direction: { type: "string", enum: [...sortDirectionCodec.names] },
           },
           required: ["field", "direction"],
         },
@@ -141,7 +57,7 @@ Examples:
         description: "Pagination offset",
         default: 0,
       },
-      includeInputOutput: {
+      includePayloads: {
         type: "boolean",
         description: "Include full inputValue/outputValue in results (can be verbose)",
         default: false,
@@ -159,7 +75,7 @@ export async function handleQuerySpans(
   client: TuskDriftApiClient,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const input = querySpansInputSchema.parse(args) as QuerySpansInput;
+  const input = parseQuerySpansInput(args);
   const result = await client.querySpans(input);
 
   const summary = [
@@ -181,10 +97,10 @@ export async function handleQuerySpans(
         `    Timestamp: ${span.timestamp}`,
       ];
 
-      if (span.inputValue && input.includeInputOutput) {
+      if (span.inputValue && input.includePayloads) {
         lines.push(`    Input: ${JSON.stringify(span.inputValue, null, 2).split("\n").join("\n    ")}`);
       }
-      if (span.outputValue && input.includeInputOutput) {
+      if (span.outputValue && input.includePayloads) {
         lines.push(`    Output: ${JSON.stringify(span.outputValue, null, 2).split("\n").join("\n    ")}`);
       }
 

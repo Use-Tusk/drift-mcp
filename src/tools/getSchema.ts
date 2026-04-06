@@ -1,6 +1,6 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { TuskDriftApiClient } from "../apiClient.js";
-import { getSchemaInputSchema, type GetSchemaInput } from "../types.js";
+import { parseGetSchemaInput } from "../types.js";
 
 export const getSchemaTool: Tool = {
   name: "get_schema",
@@ -54,7 +54,7 @@ export async function handleGetSchema(
   client: TuskDriftApiClient,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const input = getSchemaInputSchema.parse(args) as GetSchemaInput;
+  const input = parseGetSchemaInput(args);
   const result = await client.getSchema(input);
 
   const sections: string[] = [];

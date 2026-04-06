@@ -1,14 +1,9 @@
+import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CreateMcpServerOptions } from "./provider.js";
 import type {
   TraceSpan,
   SchemaResult,
-  QuerySpansInput,
-  GetSchemaInput,
-  ListDistinctValuesInput,
-  AggregateSpansInput,
-  GetTraceInput,
-  GetSpansByIdsInput,
 } from "./types.js";
 import {
   querySpansInputSchema,
@@ -17,19 +12,34 @@ import {
   aggregateSpansInputSchema,
   getTraceInputSchema,
   getSpansByIdsInputSchema,
+  parseQuerySpansInput,
+  parseGetSchemaInput,
+  parseListDistinctValuesInput,
+  parseAggregateSpansInput,
+  parseGetTraceInput,
+  parseGetSpansByIdsInput,
 } from "./types.js";
 import type { QuerySpansResult } from "./provider.js";
 
 declare const __PACKAGE_VERSION__: string;
 declare const __PACKAGE_NAME__: string;
-export const PACKAGE_VERSION = __PACKAGE_VERSION__;
-export const PACKAGE_NAME = __PACKAGE_NAME__;
+const require = createRequire(import.meta.url);
+const packageJson = require("../package.json") as { name?: string; version?: string };
+
+export const PACKAGE_VERSION =
+  typeof __PACKAGE_VERSION__ !== "undefined"
+    ? __PACKAGE_VERSION__
+    : (packageJson.version ?? "0.0.0");
+export const PACKAGE_NAME =
+  typeof __PACKAGE_NAME__ !== "undefined"
+    ? __PACKAGE_NAME__
+    : (packageJson.name ?? "@use-tusk/drift-mcp");
 
 // ============================================
 // Response Formatters
 // ============================================
 
-function formatQuerySpansResult(result: QuerySpansResult, includeInputOutput: boolean): string {
+function formatQuerySpansResult(result: QuerySpansResult, includePayloads: boolean): string {
   const summary = [
     `Found ${result.total} spans (showing ${result.spans.length})`,
     result.hasMore ? `More results available (offset: ${result.spans.length})` : "",
@@ -49,12 +59,12 @@ function formatQuerySpansResult(result: QuerySpansResult, includeInputOutput: bo
         `    Timestamp: ${span.timestamp}`,
       ];
 
-      if (span.inputValue && includeInputOutput) {
+      if (span.inputValue && includePayloads) {
         lines.push(
           `    Input: ${JSON.stringify(span.inputValue, null, 2).split("\n").join("\n    ")}`
         );
       }
-      if (span.outputValue && includeInputOutput) {
+      if (span.outputValue && includePayloads) {
         lines.push(
           `    Output: ${JSON.stringify(span.outputValue, null, 2).split("\n").join("\n    ")}`
         );
@@ -202,13 +212,13 @@ Use this tool to:
 - Debug specific API calls
 
 Examples:
-- Find failed requests: where.name = { contains: "/api/users" }, jsonbFilters = [{ column: "outputValue", jsonPath: "$.statusCode", gte: 400, castAs: "int" }]
-- Find slow requests: where.duration = { gt: 1000 }
-- Recent traffic for endpoint: where.name = { eq: "/api/orders" }, limit = 10, orderBy = [{ field: "timestamp", direction: "DESC" }]`,
+- Find failed requests: where = { fields: { "outputValue.statusCode": { gte: 400, access: { castAs: "int" } } } }
+- Find slow requests: where = { fields: { duration: { gt: 1000 } } }
+- Recent traffic for endpoint: where = { fields: { name: { eq: "/api/orders" } } }, limit = 10, orderBy = [{ field: "timestamp", direction: "DESC" }]`,
       inputSchema: querySpansInputSchema.shape,
     },
     async (args) => {
-      const input = args as QuerySpansInput;
+      const input = parseQuerySpansInput(args);
 
       if (input.observableServiceId && !(await checkAccess(input.observableServiceId))) {
         return {
@@ -223,7 +233,7 @@ Examples:
           content: [
             {
               type: "text" as const,
-              text: formatQuerySpansResult(result, input.includeInputOutput ?? false),
+              text: formatQuerySpansResult(result, input.includePayloads ?? false),
             },
           ],
         };
@@ -258,7 +268,7 @@ Common package names:
       inputSchema: getSchemaInputSchema.shape,
     },
     async (args) => {
-      const input = args as GetSchemaInput;
+      const input = parseGetSchemaInput(args);
 
       if (input.observableServiceId && !(await checkAccess(input.observableServiceId))) {
         return {
@@ -299,7 +309,7 @@ This helps you understand what values exist before building specific queries.`,
       inputSchema: listDistinctValuesInputSchema.shape,
     },
     async (args) => {
-      const input = args as ListDistinctValuesInput;
+      const input = parseListDistinctValuesInput(args);
 
       if (input.observableServiceId && !(await checkAccess(input.observableServiceId))) {
         return {
@@ -353,7 +363,7 @@ Examples:
       inputSchema: aggregateSpansInputSchema.shape,
     },
     async (args) => {
-      const input = args as AggregateSpansInput;
+      const input = parseAggregateSpansInput(args);
 
       if (input.observableServiceId && !(await checkAccess(input.observableServiceId))) {
         return {
@@ -420,7 +430,7 @@ First use query_spans to find spans, then use the traceId to get the full trace.
       inputSchema: getTraceInputSchema.shape,
     },
     async (args) => {
-      const input = args as GetTraceInput;
+      const input = parseGetTraceInput(args);
 
       if (input.observableServiceId && !(await checkAccess(input.observableServiceId))) {
         return {
@@ -470,7 +480,7 @@ This is useful for:
       inputSchema: getSpansByIdsInputSchema.shape,
     },
     async (args) => {
-      const input = args as GetSpansByIdsInput;
+      const input = parseGetSpansByIdsInput(args);
 
       if (input.observableServiceId && !(await checkAccess(input.observableServiceId))) {
         return {
