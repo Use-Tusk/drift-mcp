@@ -15,7 +15,6 @@ Useful commands:
 ```bash
 npm run build
 npm run typecheck
-npm run lint
 ```
 
 ## Releasing

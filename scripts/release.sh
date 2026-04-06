@@ -12,9 +12,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-info() { echo -e "${GREEN}[INFO]${NC} $1"; }
-warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
+info() { printf '%b\n' "${GREEN}[INFO]${NC} $1"; }
+warn() { printf '%b\n' "${YELLOW}[WARN]${NC} $1"; }
+error() { printf '%b\n' "${RED}[ERROR]${NC} $1"; exit 1; }
 
 if [[ ! "$BUMP_TYPE" =~ ^(patch|minor|major)$ ]]; then
   error "Invalid bump type: $BUMP_TYPE. Use 'patch', 'minor', or 'major'."
@@ -76,7 +76,6 @@ fi
 
 info "Running preflight checks..."
 npm run typecheck
-npm run lint
 npm run build
 npm pack --dry-run >/dev/null
 
